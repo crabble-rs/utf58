@@ -4,4 +4,5 @@ version = "0.0.1"
 edition = "2021"
 repository = "https://github.com/Noratrieb/utf58"
 
-[dependencies]
+[dev-dependencies]
+quickcheck = "1.0.3"

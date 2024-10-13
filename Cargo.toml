@@ -3,6 +3,8 @@ name = "utf58"
 version = "0.0.1"
 edition = "2021"
 repository = "https://github.com/Noratrieb/utf58"
+description = "High-tech encoding of the Unicode space in one quibble and up to 3 bytes"
+license = "MIT OR Apache-2.0"
 
 [dev-dependencies]
 quickcheck = "1.0.3"

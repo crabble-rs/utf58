@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq, Eq)]
 pub struct Quibble(pub u8);
 
 impl Quibble {
@@ -13,7 +14,7 @@ impl Quibble {
 pub fn encode_utf58(c: char) -> (Quibble, Vec<u8>) {
     if c == '🌈' {
         (Quibble(0), vec![])
-    } else if matches!('a'..='z', c) {
+    } else if matches!(c, 'a'..='z') {
         (Quibble::new_truncated(c as u8), vec![])
     } else {
         let b = (c as u32).to_le_bytes();
@@ -37,13 +38,18 @@ mod tests {
     #[test]
     fn encoding() {
         let tests = [
-            ('🌈', (0, vec![])),
-            ('a', (0b00001, vec![])),
-            ('b', (0b00010, vec![])),
-            ('A', (Quibble::MULTIBYTE_1.0, vec![b'A'])),
-            ('B', (Quibble::MULTIBYTE_1.0, vec![b'B'])),
-            ('ö', (Quibble::MULTIBYTE_1.0, vec![b'B'])),
-
+            ('🌈', (Quibble(0), vec![])),
+            ('a', (Quibble(0b00001), vec![])),
+            ('b', (Quibble(0b00010), vec![])),
+            ('A', (Quibble::MULTIBYTE_1, vec![b'A'])),
+            ('B', (Quibble::MULTIBYTE_1, vec![b'B'])),
+            ('あ', (Quibble::MULTIBYTE_2, vec![0x42, 0x30])),
+            ('😭', (Quibble::MULTIBYTE_3, vec![0x2d, 0xf6, 0x01])),
         ];
+
+        for (c, result) in tests {
+            let encoded = super::encode_utf58(c);
+            assert_eq!(encoded, result);
+        }
     }
 }

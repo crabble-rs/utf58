@@ -1,8 +1,8 @@
 [package]
 name = "utf58"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
-repository = "https://github.com/Noratrieb/utf58"
+repository = "https://github.com/crabble-rs/utf58"
 description = "High-tech encoding of the Unicode space in one quibble and up to 3 bytes"
 license = "MIT OR Apache-2.0"
 

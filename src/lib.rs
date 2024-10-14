@@ -16,7 +16,7 @@ impl Quibble {
 pub fn encode_utf58(c: char) -> (Quibble, Vec<u8>) {
     if c == '🌈' {
         (Quibble(0), vec![])
-    } else if matches!(c, 'a'..='z') {
+    } else if c.is_ascii_lowercase() {
         (Quibble::new_truncated(c as u8), vec![])
     } else {
         let b = (c as u32).to_le_bytes();
@@ -31,6 +31,30 @@ pub fn encode_utf58(c: char) -> (Quibble, Vec<u8>) {
             (Quibble::MULTIBYTE_3, vec![b[0], b[1], b[2]])
         }
     }
+}
+
+
+/// calculates the number of segments in the encoding of a UTF-58 char.
+///
+/// 1 means a single quibble, any number above that (up to 4) means a quibble and some number of
+/// bytes.
+pub fn len_utf58(c: char) -> usize {
+    if c == '🌈' || c.is_ascii_lowercase() {
+        1
+    } else {
+        let b = (c as u32).to_le_bytes();
+        assert_eq!(b[3], 0);
+        if b[2] == 0 {
+            if b[1] == 0 {
+                2
+            } else {
+                3
+            }
+        } else {
+            4
+        }
+    }
+
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -83,7 +107,7 @@ pub fn decode_utf58(q: Quibble, rest: &[u8]) -> Result<char, DecodeError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{decode_utf58, encode_utf58, Quibble};
+    use crate::{decode_utf58, encode_utf58, len_utf58, Quibble};
     use quickcheck::quickcheck;
 
     #[test]
@@ -128,6 +152,14 @@ mod tests {
             let (q, rest) = encode_utf58(c);
 
             Ok(c) == decode_utf58(q, &rest)
+        }
+
+        fn len(c: char) -> bool {
+            let (_, rest) = encode_utf58(c);
+
+            let actual_len = 1 + rest.len();
+
+            len_utf58(c) == actual_len
         }
     }
 }

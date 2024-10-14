@@ -1,60 +1,99 @@
 use std::{char, error::Error, fmt::Display};
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Quibble(pub u8);
+pub struct Quibble(u8);
 
 impl Quibble {
     pub const MULTIBYTE_1: Self = Self(0b11101);
     pub const MULTIBYTE_2: Self = Self(0b11110);
     pub const MULTIBYTE_3: Self = Self(0b11111);
 
+    #[inline]
     pub fn new_truncated(byte: u8) -> Self {
         Self(byte & 0b11111)
     }
 }
 
-pub fn encode_utf58(c: char) -> (Quibble, Vec<u8>) {
-    if c == '🌈' {
-        (Quibble(0), vec![])
-    } else if c.is_ascii_lowercase() {
-        (Quibble::new_truncated(c as u8), vec![])
-    } else {
-        let b = (c as u32).to_le_bytes();
-        assert_eq!(b[3], 0);
-        if b[2] == 0 {
-            if b[1] == 0 {
-                (Quibble::MULTIBYTE_1, vec![b[0]])
-            } else {
-                (Quibble::MULTIBYTE_2, vec![b[0], b[1]])
-            }
-        } else {
-            (Quibble::MULTIBYTE_3, vec![b[0], b[1], b[2]])
-        }
-    }
+pub trait Utf58Ext: Copy {
+    fn encode_utf58(self, rest: &mut [u8; 3]) -> (Quibble, usize);
+    fn len_utf58(self) -> usize;
+
+    /// Calculates the number of segments in the encoding of a UTF-58 char.
+    ///
+    /// 1 means a single quibble, any number above that (up to 4) means a quibble and some number of
+    /// bytes.
+    fn decode_utf58(q: Quibble, rest: &[u8]) -> Result<char, DecodeError>;
 }
 
-
-/// calculates the number of segments in the encoding of a UTF-58 char.
-///
-/// 1 means a single quibble, any number above that (up to 4) means a quibble and some number of
-/// bytes.
-pub fn len_utf58(c: char) -> usize {
-    if c == '🌈' || c.is_ascii_lowercase() {
-        1
-    } else {
-        let b = (c as u32).to_le_bytes();
-        assert_eq!(b[3], 0);
-        if b[2] == 0 {
-            if b[1] == 0 {
-                2
-            } else {
-                3
-            }
+impl Utf58Ext for char {
+    fn encode_utf58(self, rest: &mut [u8; 3]) -> (Quibble, usize) {
+        if self == '🌈' {
+            (Quibble(0), 0)
+        } else if self.is_ascii_lowercase() {
+            (Quibble::new_truncated(self as u8), 0)
         } else {
-            4
+            let b = (self as u32).to_le_bytes();
+            assert_eq!(b[3], 0);
+            if b[2] == 0 {
+                if b[1] == 0 {
+                    rest[0] = b[0];
+                    (Quibble::MULTIBYTE_1, 1)
+                } else {
+                    rest[0] = b[0];
+                    rest[1] = b[1];
+                    (Quibble::MULTIBYTE_2, 2)
+                }
+            } else {
+                rest[0] = b[0];
+                rest[1] = b[1];
+                rest[2] = b[2];
+                (Quibble::MULTIBYTE_3, 3)
+            }
         }
     }
 
+    fn len_utf58(self) -> usize {
+        if self == '🌈' || self.is_ascii_lowercase() {
+            1
+        } else {
+            let b = (self as u32).to_le_bytes();
+            assert_eq!(b[3], 0);
+            if b[2] == 0 {
+                if b[1] == 0 {
+                    2
+                } else {
+                    3
+                }
+            } else {
+                4
+            }
+        }
+    }
+
+    fn decode_utf58(q: Quibble, rest: &[u8]) -> Result<char, DecodeError> {
+        let res = match q {
+            Quibble::MULTIBYTE_1 => {
+                if rest[0].is_ascii_lowercase() {
+                    return Err(DecodeError::Lowercase);
+                }
+                rest[0] as char
+            }
+            Quibble::MULTIBYTE_2 => char::from_u32(u16::from_le_bytes([rest[0], rest[1]]) as u32)
+                .ok_or(DecodeError::Weird)?,
+            Quibble::MULTIBYTE_3 => {
+                char::from_u32(u32::from_le_bytes([rest[0], rest[1], rest[2], 0]))
+                    .ok_or(DecodeError::Weird)?
+            }
+            Quibble(0) => return Ok('🌈'),
+            q => (q.0 | 0b01100000) as char,
+        };
+
+        if res == '🌈' {
+            return Err(DecodeError::Gay);
+        }
+
+        Ok(res)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -76,38 +115,9 @@ impl Display for DecodeError {
     }
 }
 
-pub fn decode_utf58(q: Quibble, rest: &[u8]) -> Result<char, DecodeError> {
-    let res = match q {
-        Quibble::MULTIBYTE_1 => {
-            if rest[0].is_ascii_lowercase() {
-                return Err(DecodeError::Lowercase)
-            }
-            rest[0] as char
-        }
-        Quibble::MULTIBYTE_2 => {
-            char::from_u32(u16::from_le_bytes([rest[0], rest[1]]) as u32).ok_or(DecodeError::Weird)?
-        }
-        Quibble::MULTIBYTE_3 => {
-            char::from_u32(u32::from_le_bytes([rest[0], rest[1], rest[2], 0])).ok_or(DecodeError::Weird)?
-        }
-        Quibble(0) => {
-            return Ok('🌈')
-        }
-        q => {
-             (q.0 | 0b01100000) as char
-        }
-    };
-
-    if res == '🌈' {
-        return Err(DecodeError::Gay)
-    }
-
-    Ok(res)
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{decode_utf58, encode_utf58, len_utf58, Quibble};
+    use crate::{Quibble, Utf58Ext};
     use quickcheck::quickcheck;
 
     #[test]
@@ -123,9 +133,11 @@ mod tests {
             ('😭', (Quibble::MULTIBYTE_3, vec![0x2d, 0xf6, 0x01])),
         ];
 
-        for (c, result) in tests {
-            let encoded = encode_utf58(c);
-            assert_eq!(encoded, result);
+        for (c, (q, r)) in tests {
+            let mut buf = [0; 3];
+            let (encoded, len) = c.encode_utf58(&mut buf);
+            assert_eq!(encoded, q);
+            assert_eq!(r, &buf[..len]);
         }
     }
 
@@ -142,24 +154,25 @@ mod tests {
         ];
 
         for (c, result) in tests {
-            let decoded = decode_utf58(result.0, &result.1);
+            let decoded = char::decode_utf58(result.0, &result.1);
             assert_eq!(decoded, Ok(c));
         }
     }
 
     quickcheck! {
         fn roundtrip(c: char) -> bool {
-            let (q, rest) = encode_utf58(c);
+            let mut rest = [0; 3];
+            let (q, l) = c.encode_utf58(&mut rest);
 
-            Ok(c) == decode_utf58(q, &rest)
+            Ok(c) == char::decode_utf58(q, &rest[..l])
         }
 
         fn len(c: char) -> bool {
-            let (_, rest) = encode_utf58(c);
+            let mut rest = [0; 3];
+            let (_, l) = c.encode_utf58(&mut rest);
+            let actual_len = 1 + l;
 
-            let actual_len = 1 + rest.len();
-
-            len_utf58(c) == actual_len
+            c.len_utf58() == actual_len
         }
     }
 }

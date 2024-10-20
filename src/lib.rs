@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::{char, error::Error, fmt::Display};
 
 #[derive(Debug, PartialEq, Eq)]
